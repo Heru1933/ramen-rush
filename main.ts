@@ -1,41 +1,66 @@
-// A working best-game-01 entry (Node 22, standard library only): the game is this directory's
-// game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
-// modules, no library and no network request), and the program hands it in. It copies game/ and
-// screenshots/ from beside this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library. A starting point, not a winner: Block Dodger, a
-// plain 2D canvas game where a paddle dodges falling blocks and catches coins, with a title screen,
-// score, lives and levels, game over and restart, flat colours and no sound. Build your own game
-// (any genre, any library you vendor under game/, or none), put your 3 or 4 PNG or JPEG screenshots
-// in screenshots/ (the first by name is the cover) and run it.
+// Ramen Rush — a precision ramen-shop cooking game.
 //
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// You run a tiny ramen counter through the lunch rush: take each customer's
+// order, boil the noodles to the right bite, ladle the broth, lay on the
+// toppings in the order they asked for, and slide the bowl across before the
+// customer's patience runs out. Orders get longer, the queue gets louder,
+// and a perfect bowl earns a tip. The whole game is plain static files in
+// game/ (game/index.html plus its ES modules and stylesheet, no libraries,
+// no network), so any desktop browser can open it offline.
+//
+// This file is the entrypoint the judge runs. It stages the deliverable:
+// it copies game/ and screenshots/ next to this file into the output
+// directory and writes dossier.json there, the summary the judge reads,
+// using the vendored make.fun helper. Run it with Node 22, standard
+// library only, nothing to install:
+//
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+//
+// Inside the grader's container the output directory is /output; outside
+// it, MAKEFUN_OUTPUT_DIR stands in for /output. To play it locally first,
+// run `node serve.ts` and open http://localhost:8080. The first screenshot
+// by name is the cover image, so keep the title shot first.
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+// Directory holding this file, and the directory the staged entry goes to.
+const sourceDir = fileURLToPath(new URL('.', import.meta.url));
+const outputDir = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+// Copy a folder only when it is actually there, creating the target first.
+function copyFolderIfPresent(name: string): void {
+  const from = join(sourceDir, name);
+  if (!existsSync(from)) return;
+  const to = join(outputDir, name);
+  mkdirSync(to, { recursive: true });
+  cpSync(from, to, { recursive: true });
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    game_max_files: 993,
-    game_max_bytes: 50331648,
-    game_path_max_bytes: 1000,
-  }),
-);
+// Fail loudly instead of shipping an empty bowl: the game must have its
+// front page before anything is staged.
+if (!existsSync(join(sourceDir, 'game', 'index.html'))) {
+  throw new Error('Ramen Rush is missing game/index.html — nothing to stage.');
+}
+
+mkdirSync(outputDir, { recursive: true });
+copyFolderIfPresent('game');
+copyFolderIfPresent('screenshots');
+
+// The scorer's caps (reference/gate.json). text_max_bytes is the only one
+// that trims text; the rest are hard refusals, so the staged entry must
+// stay inside them: at most 4 screenshots, each no bigger than 256 KiB;
+// at most 993 files in game/ totalling no more than 48 MiB, with no single
+// game/ path longer than 1000 bytes. game/ is counted beside the output
+// directory's own 1000-entry cap, its screenshots/ and dossier.json.
+const dossier = buildDossier(outputDir, {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  game_max_files: 993,
+  game_max_bytes: 50331648,
+  game_path_max_bytes: 1000,
+});
+
+writeFileSync(join(outputDir, 'dossier.json'), dossier);
